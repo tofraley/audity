@@ -1,0 +1,1 @@
+protoc --twirp_out=. --go_out=. --twirp_opt=paths=source_relative --go_opt=paths=source_relative rpc/auditer/service.proto
