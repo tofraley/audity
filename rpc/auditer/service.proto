@@ -14,30 +14,31 @@ message NpmAuditResponse {
 }
 
 message NpmAuditRequest {
-  string project_name = 1;
+  string projectName = 1;
   NpmAuditResult result = 2;
 }
 
 message NpmAuditResult {
-  int32 audit_report_version = 1;
+  int32 auditReportVersion = 1;
   map<string, Vulnerability> vulnerabilities = 2;
   Metadata metadata = 3;
 }
+
 message Vulnerability {
   string name = 1;
   string severity = 2;
-  bool is_direct = 3;
+  bool isDirect = 3;
   repeated string via = 4;
   repeated string effects = 5;
   string range = 6;
   repeated string nodes = 7;
-  FixAvailable fix_available = 8;
+  FixAvailable fixAvailable = 8;
 }
 
 message FixAvailable {
   string name = 1;
   string version = 2;
-  bool is_sem_ver_major = 3;
+  bool isSemVerMajor = 3;
 }
 
 message Metadata {
@@ -47,13 +48,17 @@ message Metadata {
 
 message VulnerabilitySummary {
   int32 info = 1;
-  repeated string paths = 2;
-}
-
-message AuditSummary {
-  int32 info = 1;
   int32 low = 2;
   int32 moderate = 3;
   int32 high = 4;
   int32 critical = 5;
+}
+
+message DependencySummary {
+  int32 prod = 1;
+  int32 dev = 2;
+  int32 optional = 3;
+  int32 peer = 4;
+  int32 peerOptional = 5;
+  int32 total = 6;
 }
