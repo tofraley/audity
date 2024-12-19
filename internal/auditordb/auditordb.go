@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -49,58 +48,31 @@ func (s *AuditerService) RecordNpmAudit(req *pb.NpmAuditRequest) error {
 		}
 	}
 
-	// Insert npm_audit_results
-	resultStmt, err := tx.Prepare(`
-		INSERT INTO npm_audit_results (
-			project_id, audit_time, total_dependencies, total_dev_dependencies, 
-			total_optional_dependencies, total_vulnerabilities
-		) VALUES (?, ?, ?, ?, ?, ?)
+	// Insert npm_audits
+	auditStmt, err := tx.Prepare(`
+		INSERT INTO npm_audits (project_id, audit_report_version)
+		VALUES (?, ?)
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to prepare npm_audit_results statement: %v", err)
+		return fmt.Errorf("failed to prepare npm_audits statement: %v", err)
 	}
-	defer resultStmt.Close()
+	defer auditStmt.Close()
 
-	res, err := resultStmt.Exec(
-		projectID,
-		time.Unix(req.Result.AuditTime, 0),
-		req.Result.TotalDependencies,
-		req.Result.TotalDevDependencies,
-		req.Result.TotalOptionalDependencies,
-		req.Result.TotalVulnerabilities,
-	)
+	res, err := auditStmt.Exec(projectID, req.Result.AuditReportVersion)
 	if err != nil {
-		return fmt.Errorf("failed to insert npm_audit_results: %v", err)
+		return fmt.Errorf("failed to insert npm_audits: %v", err)
 	}
 
-	resultID, err := res.LastInsertId()
+	auditID, err := res.LastInsertId()
 	if err != nil {
 		return fmt.Errorf("failed to get last insert id: %v", err)
 	}
 
-	// Insert metadata
-	metadataStmt, err := tx.Prepare("INSERT INTO metadata (result_id, key, value) VALUES (?, ?, ?)")
-	if err != nil {
-		return fmt.Errorf("failed to prepare metadata statement: %v", err)
-	}
-	defer metadataStmt.Close()
-
-	for key, metadata := range req.Result.Metadata {
-		value, err := json.Marshal(metadata.Values)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata values: %v", err)
-		}
-		_, err = metadataStmt.Exec(resultID, key, string(value))
-		if err != nil {
-			return fmt.Errorf("failed to insert metadata: %v", err)
-		}
-	}
-
 	// Insert vulnerabilities
 	vulnStmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO vulnerabilities (
-			id, url, title, severity, module_name, vulnerable_functions, 
-			access, patched_versions, cwe, updated, recommendation
+		INSERT INTO vulnerabilities (
+			npm_audit_id, name, severity, is_direct, via, effects, range,
+			nodes, fix_name, fix_version, fix_is_sem_ver_major
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -108,69 +80,66 @@ func (s *AuditerService) RecordNpmAudit(req *pb.NpmAuditRequest) error {
 	}
 	defer vulnStmt.Close()
 
-	vulnAuditStmt, err := tx.Prepare("INSERT INTO vulnerability_audit_results (vulnerability_id, result_id) VALUES (?, ?)")
-	if err != nil {
-		return fmt.Errorf("failed to prepare vulnerability_audit_results statement: %v", err)
-	}
-	defer vulnAuditStmt.Close()
-
 	for _, vuln := range req.Result.Vulnerabilities {
+		via, _ := json.Marshal(vuln.Via)
+		effects, _ := json.Marshal(vuln.Effects)
+		nodes, _ := json.Marshal(vuln.Nodes)
+
 		_, err = vulnStmt.Exec(
-			vuln.Id, vuln.Url, vuln.Title, vuln.Severity, vuln.ModuleName,
-			vuln.VulnerableFunctions, vuln.Access, vuln.PatchedVersions,
-			vuln.Cwe, vuln.Updated, vuln.Recommendation,
+			auditID, vuln.Name, vuln.Severity, vuln.IsDirect, string(via),
+			string(effects), vuln.Range, string(nodes),
+			vuln.FixAvailable.Name, vuln.FixAvailable.Version, vuln.FixAvailable.IsSemVerMajor,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert vulnerability: %v", err)
 		}
-
-		_, err = vulnAuditStmt.Exec(vuln.Id, resultID)
-		if err != nil {
-			return fmt.Errorf("failed to insert vulnerability_audit_result: %v", err)
-		}
-
-		// Insert vulnerable versions
-		for _, version := range vuln.VulnerableVersions {
-			_, err = tx.Exec("INSERT OR IGNORE INTO vulnerable_versions (vulnerability_id, version) VALUES (?, ?)", vuln.Id, version)
-			if err != nil {
-				return fmt.Errorf("failed to insert vulnerable version: %v", err)
-			}
-		}
-
-		// Insert CVEs
-		for _, cve := range vuln.Cves {
-			_, err = tx.Exec("INSERT OR IGNORE INTO cves (vulnerability_id, cve) VALUES (?, ?)", vuln.Id, cve)
-			if err != nil {
-				return fmt.Errorf("failed to insert CVE: %v", err)
-			}
-		}
-
-		// Insert findings
-		for _, finding := range vuln.Findings {
-			var findingID int64
-			err = tx.QueryRow("INSERT INTO findings (vulnerability_id, version) VALUES (?, ?) RETURNING id", vuln.Id, finding.Version).Scan(&findingID)
-			if err != nil {
-				return fmt.Errorf("failed to insert finding: %v", err)
-			}
-
-			for _, path := range finding.Paths {
-				_, err = tx.Exec("INSERT INTO finding_paths (finding_id, path) VALUES (?, ?)", findingID, path)
-				if err != nil {
-					return fmt.Errorf("failed to insert finding path: %v", err)
-				}
-			}
-		}
 	}
 
-	// Insert audit summary
-	_, err = tx.Exec(`
-		INSERT INTO audit_summaries (result_id, info, low, moderate, high, critical)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, resultID, req.Result.Summary.Info, req.Result.Summary.Low, req.Result.Summary.Moderate, req.Result.Summary.High, req.Result.Summary.Critical)
+	// Insert vulnerability summary
+	vulnSummaryStmt, err := tx.Prepare(`
+		INSERT INTO vulnerability_summaries (
+			npm_audit_id, info, low, moderate, high, critical, total
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`)
 	if err != nil {
-		return fmt.Errorf("failed to insert audit summary: %v", err)
+		return fmt.Errorf("failed to prepare vulnerability_summaries statement: %v", err)
+	}
+	defer vulnSummaryStmt.Close()
+
+	_, err = vulnSummaryStmt.Exec(
+		auditID, req.Result.Metadata.Vulnerabilities.Info,
+		req.Result.Metadata.Vulnerabilities.Low,
+		req.Result.Metadata.Vulnerabilities.Moderate,
+		req.Result.Metadata.Vulnerabilities.High,
+		req.Result.Metadata.Vulnerabilities.Critical,
+		req.Result.Metadata.Vulnerabilities.Total,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert vulnerability summary: %v", err)
 	}
 
+	// Insert dependency summary
+	depSummaryStmt, err := tx.Prepare(`
+		INSERT INTO dependency_summaries (
+			npm_audit_id, prod, dev, optional, peer, peer_optional, total
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare dependency_summaries statement: %v", err)
+	}
+	defer depSummaryStmt.Close()
+
+	_, err = depSummaryStmt.Exec(
+		auditID, req.Result.Metadata.Dependencies.Prod,
+		req.Result.Metadata.Dependencies.Dev,
+		req.Result.Metadata.Dependencies.Optional,
+		req.Result.Metadata.Dependencies.Peer,
+		req.Result.Metadata.Dependencies.PeerOptional,
+		req.Result.Metadata.Dependencies.Total,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert dependency summary: %v", err)
+	}
 	err = tx.Commit()
 	if err != nil {
 		return fmt.Errorf("failed to commit transaction: %v", err)

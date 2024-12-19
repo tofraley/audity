@@ -19,39 +19,34 @@ message NpmAuditRequest {
 }
 
 message NpmAuditResult {
-  int64 audit_time = 1;
-  map<string, Metadata> metadata = 2;
-  repeated Vulnerability vulnerabilities = 3;
-  int32 total_dependencies = 4;
-  int32 total_dev_dependencies = 5;
-  int32 total_optional_dependencies = 6;
-  int32 total_vulnerabilities = 7;
-  AuditSummary summary = 8;
+  int32 audit_report_version = 1;
+  map<string, Vulnerability> vulnerabilities = 2;
+  Metadata metadata = 3;
+}
+message Vulnerability {
+  string name = 1;
+  string severity = 2;
+  bool is_direct = 3;
+  repeated string via = 4;
+  repeated string effects = 5;
+  string range = 6;
+  repeated string nodes = 7;
+  FixAvailable fix_available = 8;
+}
+
+message FixAvailable {
+  string name = 1;
+  string version = 2;
+  bool is_sem_ver_major = 3;
 }
 
 message Metadata {
-  repeated string values = 1;
+  VulnerabilitySummary vulnerabilities = 1;
+  DependencySummary dependencies = 2;
 }
 
-message Vulnerability {
-  string id = 1;
-  string url = 2;
-  string title = 3;
-  string severity = 4;
-  repeated string vulnerable_versions = 5;
-  string module_name = 6;
-  string vulnerable_functions = 7;
-  repeated string cves = 8;
-  string access = 9;
-  string patched_versions = 10;
-  string cwe = 11;
-  repeated Finding findings = 12;
-  string updated = 13;
-  string recommendation = 14;
-}
-
-message Finding {
-  string version = 1;
+message VulnerabilitySummary {
+  int32 info = 1;
   repeated string paths = 2;
 }
 
