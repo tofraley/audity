@@ -1,1 +1,1 @@
-WIP
+Pronounced like "oddity".
