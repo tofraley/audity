@@ -10,6 +10,7 @@ service Auditer {
 }
 
 message NpmAuditResponse {
+  bool success = 1;
 }
 
 message NpmAuditRequest {
