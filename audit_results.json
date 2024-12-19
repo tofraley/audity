@@ -1,0 +1,41 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@angular-builders/custom-webpack": {
+      "name": "@angular-builders/custom-webpack",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@angular-devkit/build-angular"
+      ],
+      "effects": [],
+      "range": "9.2.1-beta.0 - 13.1.0",
+      "nodes": [
+        "node_modules/@angular-builders/custom-webpack"
+      ],
+      "fixAvailable": {
+        "name": "@angular-builders/custom-webpack",
+        "version": "18.0.0",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 5,
+      "moderate": 23,
+      "high": 25,
+      "critical": 3,
+      "total": 56
+    },
+    "dependencies": {
+      "prod": 177,
+      "dev": 1398,
+      "optional": 37,
+      "peer": 41,
+      "peerOptional": 0,
+      "total": 1618
+    }
+  }
+}
