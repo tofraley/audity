@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 
 	"github.com/tofraley/audity/rpc/auditer"
@@ -11,7 +13,7 @@ import (
 
 func main() {
 	// Load audit_results.json
-	auditResultsBytes, err := ioutil.ReadFile("audit_results.json")
+	auditResultsBytes, err := ioutil.ReadFile("audit_results-long.json")
 	if err != nil {
 		fmt.Printf("Error reading audit_results.json: %v\n", err)
 		os.Exit(1)
@@ -24,32 +26,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("audit: %+v\n", &npmAuditResult)
+	client := auditer.NewAuditerProtobufClient("http://localhost:8080", &http.Client{})
 
-	vulnerabilities := npmAuditResult.GetVulnerabilities()
-
-	// Get the first value
-	var firstVulnerability *auditer.Vulnerability
-	for _, v := range vulnerabilities {
-		firstVulnerability = v
-		break
+	result, err := client.RecordNpmAudit(context.Background(), &auditer.NpmAuditRequest{
+		ProjectName: "TestProject",
+		Result:      &npmAuditResult,
+	})
+	if err != nil {
+		fmt.Printf("oh no: %v", err)
+		os.Exit(1)
 	}
-
-	if firstVulnerability != nil {
-		fmt.Printf("First fix: %+v\n", firstVulnerability.FixAvailable)
-	} else {
-		fmt.Println("No vulnerabilities found")
-	}
-
-	// client := auditer.NewAuditerProtobufClient("http://localhost:8080", &http.Client{})
-
-	// result, err := client.RecordNpmAudit(context.Background(), &auditer.NpmAuditRequest{
-	// 	ProjectName: "TestProject",
-	// 	Result:      &npmAuditResult,
-	// })
-	// if err != nil {
-	// 	fmt.Printf("oh no: %v", err)
-	// 	os.Exit(1)
-	// }
-	// fmt.Printf("Result: %+v", result)
+	fmt.Printf("Result: %+v", result)
 }
